@@ -37,55 +37,33 @@ public:
   using Clique = typename BayesTree::Clique;
   using sharedClique = typename BayesTree::sharedClique;
 
-  /** Get the additional keys that need to be re-eliminated when marginalizing
+  /** Get the additional keys that need reelimination when marginalizing
    * the variables in @p marginalizableKeys from the Bayes tree @p bayesTree.
    * 
-   * @param[in] bayesTree The Bayes tree to be marginalized.
+   * @param[in] bayesTree The Bayes tree.
    * @param[in] marginalizableKeys  The keys to be marginalized.
    * 
    * 
-   * When marginalizing a variable @f$ \theta @f$ in a Bayes tree, some nodes
-   * may need to be re-eliminated. The variable to be marginalized should be
-   * eliminated first.
+   * When marginalizing a variable @f$ \theta @f$ from a Bayes tree, some
+   * nodes may need reelimination to ensure the variables to marginalize
+   * be eliminated first.
    * 
-   * 1. If @f$ \theta @f$ is already in a leaf node @f$ L @f$, and all other
-   *    frontal variables within @f$ L @f$ are to be marginalized, then this
-   *    node does not need to be re-eliminated; the entire node can be directly
-   *    marginalized.
+   * We should consider two cases:
    * 
-   * 2. If @f$ \theta @f$ is in a leaf node @f$ L @f$, but @f$ L @f$ contains
-   *    other frontal variables that do not need to be marginalized:
-   *
-   *    a. If all other non-marginalized frontal variables are listed after
-   *       @f$ \theta @f$ (each node contains a frontal list, with variables to
-   *       be eliminated earlier in the list), then node @f$ L @f$ does not
-   *       need to be re-eliminated.
-   *
-   *    b. Otherwise, if there are non-marginalized nodes listed before
-   *       @f$ \theta @f$, then node @f$ L @f$ needs to be re-eliminated, and
-   *       correspondingly, all nodes between @f$ L @f$ and the root need to be
-   *       re-eliminated.
+   * 1. If a child node relies on @f$ \theta @f$ (i.e., @f$ \theta @f$
+   *    is a parent / separator of the node), then the frontal
+   *    variables of the child node need to be reeliminated. In
+   *    addition, all the descendants of the child node also need to
+   *    be reeliminated.
    * 
-   * 3. If @f$ \theta @f$ is in an intermediate node @f$ M @f$ (non-leaf node),
-   *    but none of @f$ M @f$'s child nodes depend on variable @f$ \theta @f$
-   *    (they only depend on other variables within @f$ M @f$), then during the
-   *    process of marginalizing @f$ \theta @f$, @f$ M @f$ can be treated as a
-   *    leaf node, and @f$ M @f$ should be processed following the same
-   *    approach as for leaf nodes.
+   * 2. If other frontal variables in the same node with @f$ \theta @f$
+   *    are in front of @f$ \theta @f$ but not to be marginalized, then
+   *    these variables also need to be reeliminated.
    * 
-   *    In this case, the original elimination of @f$ \theta @f$ does not
-   *    depend on the elimination results of variables in the child nodes.
+   * These variables were eliminated before @f$ \theta @f$ in the original
+   * Bayes tree, and after reelimination they will be eliminated after
+   * @f$ \theta @f$ so that @f$ \theta @f$ can be marginalized safely.
    * 
-   * 4. If @f$ \theta @f$ is in an intermediate node @f$ M @f$ (non-leaf node),
-   *    and there exist child nodes that depend on variable @f$ \theta @f$,
-   *    then not only does node @f$ M @f$ need to be re-eliminated, but all
-   *    child nodes dependent on @f$ \theta @f$, including descendant nodes
-   *    recursively dependent on @f$ \theta @f$, also need to be re-eliminated.
-   *
-   *    The frontal variables in child nodes were originally eliminated before
-   *    @f$ \theta @f$ and their elimination results are relied upon by
-   *    @f$ \theta @f$'s elimination. When re-eliminating, they should be
-   *    eliminated after @f$ \theta @f$.
    */
   static void gatherAdditionalKeysToReEliminate(
       const BayesTree& bayesTree,
@@ -104,20 +82,21 @@ public:
       }
       checkedCliques.insert(clique);
 
-      bool is_leaf = clique->children.empty();
       bool need_reeliminate = false;
       bool has_non_marginalizable_ahead = false;
       for (Key i: clique->conditional()->frontals()) {
         if (marginalizableKeySet.count(i)) {
           if (has_non_marginalizable_ahead) {
+            // Case 2 in the docstring
             need_reeliminate = true;
             break;
           } else {
-            // Check whether there're child nodes dependent on this key.
+            // Check whether there's a child node dependent on this key.
             for(const sharedClique& child: clique->children) {
               if (std::find(child->conditional()->beginParents(),
                   child->conditional()->endParents(), i)
                   != child->conditional()->endParents()) {
+                // Case 1 in the docstring
                 need_reeliminate = true;
                 break;
               }
@@ -129,10 +108,11 @@ public:
       }
 
       if (!need_reeliminate) {
+        // No variable needs to be reeliminated
         continue;
       } else {
-        // need to re-eliminate this clique and all its children that depend on
-        // a marginalizable key
+        // Need to reeliminate the current clique and all its children
+        // that rely on a marginalizable key.
         for (Key i: clique->conditional()->frontals()) {
           additionalKeys.insert(i);
           for (const sharedClique& child: clique->children) {
