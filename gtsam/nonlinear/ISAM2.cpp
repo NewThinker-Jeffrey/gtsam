@@ -512,14 +512,14 @@ void ISAM2::marginalizeLeaves(
         // Add to factors to remove
         const auto& involved = variableIndex_[frontal];
         factorIndicesToRemove.insert(involved.begin(), involved.end());
-#if !defined(NDEBUG)
+// #if !defined(NDEBUG)
         // Check for non-leaf keys
         if (!leafKeys.exists(frontal))
           throw std::runtime_error(
               "Requesting to marginalize variables that are not leaves, "
               "the ISAM2 object is now in an inconsistent state so should "
               "no longer be used.");
-#endif
+// #endif
       }
     }
     return removedCliques;
@@ -532,14 +532,67 @@ void ISAM2::marginalizeLeaves(
 
       // Traverse up the tree to find the root of the marginalized subtree
       sharedClique clique = nodes_[j];
+
+      // TODO(jeffrey):
+      //
+      // Reconsider the loop below. Should we go back to the up most node
+      // that contains a leaf-key?
+      //
+      // The loop below might even causes problems sometimes. For example
+      // when marginalizing X2 and X4 in the following tree:
+      // 
+      //    (X2, X3, X1)
+      //         |- (X4, X5 | X3)
+      //
+      // where the corresponding Bayes net (R matrix) is like:
+      //
+      //      X4  X5  X2  X3  X1
+      // X4   *   *   O   *   O
+      // X5   O   *   O   *   O
+      // X2   O   O   *   *   *
+      // X3   O   O   O   *   *
+      // X1   O   O   O   O   *
+      //
+      // When j = X4 is checked, the loop below will set `clique` to
+      // the node (X2, X3 | X1), thus the leaf clique (X4, X5 | X3) will not
+      // be marginalized.
+      //
+      // Note X2 is marginalizable though it is not in a leaf clique, because
+      // no variable in the children cliques depend on it. Will isam2
+      // ensure the above tree replaced by the equivalent Bayes tree below
+      // whenever possible (which avoid the problem mentioned above) ?
+      //
+      //   (Permute X2 and X5 to get the equivalent Bayes net)
+      //
+      //      X4  X2  X5  X3  X1
+      // X4   *   O   *   *   O
+      // X2   O   *   O   *   O
+      // X5   O   O   *   *   *
+      // X3   O   O   O   *   *
+      // X1   O   O   O   O   *
+      //
+      //    (X5, X3, X1)
+      //         |- (X4 | X5, X3)
+      //         |- (X2 | X3)
+      //
       while (clique->parent_.use_count() != 0) {
         // Check if parent contains a marginalized leaf variable.  Only need to
         // check the first variable because it is the closest to the leaves.
         sharedClique parent = clique->parent();
-        if (leafKeys.exists(parent->conditional()->front()))
+        if (leafKeys.exists(parent->conditional()->front())) {
+          // Check whether all keys in the current clique are leaf variables.
+          for (Key frontal : clique->conditional()->frontals()) {
+            if (!leafKeys.exists(frontal)) {
+              throw std::runtime_error(
+                  "ISAM2::marginalizeLeaves: A key in the parent clique is "
+                  "marked as leafNode, but some key(s) in the current clique "
+                  "are not, which might be a bug.");
+            }
+          }
           clique = parent;
-        else
+        } else {
           break;
+        }
       }
 
       // See if we should remove the whole clique
@@ -550,6 +603,32 @@ void ISAM2::marginalizeLeaves(
           break;
         }
       }
+
+      // // Or should we do this only when marginalizeEntireClique = true?
+      // //
+      // // Go to the parent only when marginalizeEntireClique = true.
+      // //
+      // // See if we should remove the whole clique
+      // bool marginalizeEntireClique = true;
+      // while (clique) {
+      //   for (Key frontal : clique->conditional()->frontals()) {
+      //     if (!leafKeys.exists(frontal)) {
+      //       marginalizeEntireClique = false;
+      //       break;
+      //     }
+      //   }
+      //   if (marginalizeEntireClique) {
+      //     // Check if parent contains a marginalized leaf variable.  Only need to
+      //     // check the first variable because it is the closest to the leaves.
+      //     sharedClique parent = clique->parent();
+      //     if (leafKeys.exists(parent->conditional()->front()))
+      //       clique = parent;
+      //     else
+      //       break;
+      //   } else {
+      //     break;
+      //   }
+      // }
 
       // Remove either the whole clique or part of it
       if (marginalizeEntireClique) {

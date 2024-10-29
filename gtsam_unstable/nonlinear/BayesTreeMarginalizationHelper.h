@@ -55,10 +55,12 @@ public:
    * 
    * 2. If @f$ \theta @f$ is in a leaf node @f$ L @f$, but @f$ L @f$ contains
    *    other frontal variables that do not need to be marginalized:
+   *
    *    a. If all other non-marginalized frontal variables are listed after
    *       @f$ \theta @f$ (each node contains a frontal list, with variables to
    *       be eliminated earlier in the list), then node @f$ L @f$ does not
    *       need to be re-eliminated.
+   *
    *    b. Otherwise, if there are non-marginalized nodes listed before
    *       @f$ \theta @f$, then node @f$ L @f$ needs to be re-eliminated, and
    *       correspondingly, all nodes between @f$ L @f$ and the root need to be
