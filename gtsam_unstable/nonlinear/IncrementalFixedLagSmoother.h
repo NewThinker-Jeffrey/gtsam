@@ -117,6 +117,15 @@ public:
   /// Get the iSAM2 object which is used for the inference internally
   const ISAM2& getISAM2() const { return isam_; }
 
+  /// Get the keys that are marginalized out in the marginalization stage of the latest update
+  const FastList<Key>& getMarginalizedKeys() const { return marginalizedKeys_; }
+
+  /// Get the indices of the factors that are marginalized out in marginalization stage of the latest update
+  const FactorIndices& getMarginalizedFactorsIndices() const { return marginalizedFactorsIndices_; }
+
+  /// Get the indices of the marginal factors that are added in the marginalization stage of the latest update
+  const FactorIndices& getMarginalFactorsIndices() const { return marginalFactorsIndices_; }
+
 protected:
 
   /** Create default parameters */
@@ -132,6 +141,15 @@ protected:
 
   /** Store results of latest isam2 update */
   ISAM2Result isamResult_;
+
+  /** Store the keys that are marginalized out in the marginalization stage of the latest update */
+  FastList<Key> marginalizedKeys_;
+
+  /** Store the indices of the factors that are marginalized out in the marginalization stage of the latest update */
+  FactorIndices marginalizedFactorsIndices_;
+
+  /** Store the indices of the marginal factors that are added in the marginalization stage of the latest update */
+  FactorIndices marginalFactorsIndices_;
 
   /** Erase any keys associated with timestamps before the provided time */
   void eraseKeysBefore(double timestamp);

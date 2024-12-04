@@ -112,7 +112,11 @@ FixedLagSmoother::Result IncrementalFixedLagSmoother::update(
   if (marginalizableKeys.size() > 0) {
     FastList<Key> leafKeys(marginalizableKeys.begin(),
         marginalizableKeys.end());
-    isam_.marginalizeLeaves(leafKeys);
+    FactorIndices marginalFactorsIndices, deletedFactorsIndices;
+    isam_.marginalizeLeaves(leafKeys, &marginalFactorsIndices, &deletedFactorsIndices);
+    std::swap(marginalFactorsIndices, marginalFactorsIndices_);
+    std::swap(deletedFactorsIndices, marginalizedFactorsIndices_);
+    std::swap(leafKeys, marginalizedKeys_);
   }
 
   // Remove marginalized keys from the KeyTimestampMap

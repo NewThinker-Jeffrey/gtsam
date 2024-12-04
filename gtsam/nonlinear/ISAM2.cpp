@@ -512,14 +512,14 @@ void ISAM2::marginalizeLeaves(
         // Add to factors to remove
         const auto& involved = variableIndex_[frontal];
         factorIndicesToRemove.insert(involved.begin(), involved.end());
-#if !defined(NDEBUG)
+// #if !defined(NDEBUG)
         // Check for non-leaf keys
         if (!leafKeys.exists(frontal))
           throw std::runtime_error(
               "Requesting to marginalize variables that are not leaves, "
               "the ISAM2 object is now in an inconsistent state so should "
               "no longer be used.");
-#endif
+// #endif
       }
     }
     return removedCliques;
