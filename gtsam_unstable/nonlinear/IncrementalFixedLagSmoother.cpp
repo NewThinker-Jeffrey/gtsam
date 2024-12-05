@@ -117,6 +117,10 @@ FixedLagSmoother::Result IncrementalFixedLagSmoother::update(
     std::swap(marginalFactorsIndices, marginalFactorsIndices_);
     std::swap(deletedFactorsIndices, marginalizedFactorsIndices_);
     std::swap(leafKeys, marginalizedKeys_);
+  } else {
+    marginalFactorsIndices_.clear();
+    marginalizedFactorsIndices_.clear();
+    marginalizedKeys_.clear();
   }
 
   // Remove marginalized keys from the KeyTimestampMap
