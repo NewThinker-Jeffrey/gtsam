@@ -487,8 +487,7 @@ void ISAM2::marginalizeLeaves(
     const FastList<Key>& leafKeysList,
     FactorIndices* marginalFactorsIndices,
     FactorIndices* deletedFactorsIndices) {
-  // const bool debug = ISDEBUG("ISAM2 marginalizeLeaves");
-  const bool debug = true;
+  const bool debug = ISDEBUG("ISAM2 marginalizeLeaves");
 
   // Convert to ordered set
   KeySet leafKeys(leafKeysList.begin(), leafKeysList.end());
