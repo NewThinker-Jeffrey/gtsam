@@ -72,6 +72,10 @@ void VariableIndex::remove(ITERATOR firstFactor, ITERATOR lastFactor,
         if (entry == factorEntries.end())
           throw std::invalid_argument(
               "Internal error, indices and factors passed into VariableIndex::remove are not consistent with the existing variable index");
+
+        // TODO(jeffrey): Erasing elements from a vector one at a time is
+        // inefficient, especially when the number of factors associated with
+        // a variable is large.  Consider using a different data structure.
         factorEntries.erase(entry);
         --nEntries_;
       }
@@ -84,9 +88,14 @@ template<typename ITERATOR>
 void VariableIndex::removeUnusedVariables(ITERATOR firstKey, ITERATOR lastKey) {
   for (ITERATOR key = firstKey; key != lastKey; ++key) {
     KeyMap::iterator entry = index_.find(*key);
-    if (!entry->second.empty())
+    if (!entry->second.empty()) {
       throw std::invalid_argument(
-          "Asking to remove variables from the variable index that are not unused");
+          "Asking to remove variables from the variable index that are not "
+          "unused, key = " +
+          DefaultKeyFormatter(*key) +
+          ", number of factors still referencing this variable = " +
+          std::to_string(entry->second.size()));
+    }
     index_.erase(entry);
   }
 }

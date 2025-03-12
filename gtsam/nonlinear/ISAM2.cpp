@@ -487,6 +487,9 @@ void ISAM2::marginalizeLeaves(
     const FastList<Key>& leafKeysList,
     FactorIndices* marginalFactorsIndices,
     FactorIndices* deletedFactorsIndices) {
+  // const bool debug = ISDEBUG("ISAM2 marginalizeLeaves");
+  const bool debug = true;
+
   // Convert to ordered set
   KeySet leafKeys(leafKeysList.begin(), leafKeysList.end());
 
@@ -501,6 +504,14 @@ void ISAM2::marginalizeLeaves(
   // Keep track of factors that get summarized by removing cliques
   FactorIndexSet factorIndicesToRemove;
 
+  // Helper function to format keys for printing
+  auto formatKeys = [](const KeySet& keys) {
+    std::ostringstream oss;
+    oss << "[" << keys.size() << "]: ";
+    for (const auto& key : keys) oss << DefaultKeyFormatter(key) << " ";
+    return oss.str();
+  };
+
   // Remove the subtree and throw away the cliques
   auto trackingRemoveSubtree = [&](const sharedClique& subtreeRoot) {
     const Cliques removedCliques = this->removeSubtree(subtreeRoot);
@@ -508,18 +519,21 @@ void ISAM2::marginalizeLeaves(
       auto cg = removedClique->conditional();
       marginalFactors.erase(cg->front());
       leafKeysRemoved.insert(cg->beginFrontals(), cg->endFrontals());
+      if (debug) {
+        std::cout << "Marginalizing WHOLE clique, keys"
+                  << formatKeys(KeySet(cg->beginFrontals(), cg->endFrontals()))
+                  << std::endl;
+      }
       for (Key frontal : cg->frontals()) {
         // Add to factors to remove
         const auto& involved = variableIndex_[frontal];
         factorIndicesToRemove.insert(involved.begin(), involved.end());
-// #if !defined(NDEBUG)
         // Check for non-leaf keys
         if (!leafKeys.exists(frontal))
           throw std::runtime_error(
               "Requesting to marginalize variables that are not leaves, "
               "the ISAM2 object is now in an inconsistent state so should "
               "no longer be used.");
-// #endif
       }
     }
     return removedCliques;
@@ -530,6 +544,44 @@ void ISAM2::marginalizeLeaves(
     if (!leafKeysRemoved.exists(j)) {  // If the index was not already removed
                                        // by removing another subtree
 
+      sharedClique entireBranchToRemove;
+#if 1
+      // Traverse up the tree to find the root of the branch containing the key
+      // `j` that should be marginalized entirely, if any.
+      sharedClique clique = nodes_[j];
+      while (clique) {
+        // Check whether the current clique should be marginalized entirely
+        bool marginalizeEntireBranch = true;
+        for (Key frontal : clique->conditional()->frontals()) {
+          if (!leafKeys.exists(frontal)) {
+            marginalizeEntireBranch = false;
+            break;
+          }
+        }
+        if (marginalizeEntireBranch) {
+          entireBranchToRemove = clique;
+          // Check if parent contains a marginalized leaf variable.  Only need
+          // to check the first variable because it is the closest to the
+          // leaves.
+          if (clique->parent_.use_count() != 0 &&
+              leafKeys.exists(clique->parent()->conditional()->front())) {
+            clique = clique->parent();
+          } else {
+            break;
+          }
+        } else {
+          break;
+        }
+      }
+      bool marginalizeEntireClique = (entireBranchToRemove == clique);
+
+      //////////////////////////////////////////////////////////////////////////
+      // The original code is below. The branch contiaining the key `j` may not
+      // depend on other leafKeys, which is a corner case of the original code.
+      // And we should go up along the tree only when the current clique can be
+      // entirely marginalized.
+      //////////////////////////////////////////////////////////////////////////
+#else
       // Traverse up the tree to find the root of the marginalized subtree
       sharedClique clique = nodes_[j];
       while (clique->parent_.use_count() != 0) {
@@ -549,6 +601,17 @@ void ISAM2::marginalizeLeaves(
           marginalizeEntireClique = false;
           break;
         }
+      }
+#endif
+
+      if (debug) {
+        std::cout << "Current Key = " << DefaultKeyFormatter(j)
+                  << ", marginalizeEntireClique = " << marginalizeEntireClique
+                  << ", Current clique frontals = ";
+        for (const Key& frontal : clique->conditional()->frontals()) {
+          std::cout << DefaultKeyFormatter(frontal) << " ";
+        }
+        std::cout << std::endl;
       }
 
       // Remove either the whole clique or part of it
@@ -579,7 +642,17 @@ void ISAM2::marginalizeLeaves(
         GaussianFactorGraph graph;
         KeySet factorsInSubtreeRoot;
         Cliques subtreesToRemove;
+        // If the branch containing the key `j` can be entirely marginalized,
+        // then we add that branch to the subtreesToRemove list.
+        if (entireBranchToRemove) {
+          subtreesToRemove.push_back(entireBranchToRemove);
+          graph.push_back(entireBranchToRemove->cachedFactor());  // Add child marginal
+        }
+
+        // Then check other branches (subtrees).
         for (const sharedClique& child : clique->children) {
+          if (child == entireBranchToRemove) continue;
+
           // Remove subtree if child depends on any marginalized keys
           for (Key parent : child->conditional()->parents()) {
             if (leafKeys.exists(parent)) {
@@ -651,6 +724,13 @@ void ISAM2::marginalizeLeaves(
         cg->keys().assign(originalKeys.begin() + nToRemove, originalKeys.end());
         cg->nrFrontals() -= nToRemove;
 
+        if (debug) {
+          std::cout << "Marginalizing FRONTALS in current clique, keys"
+                    << formatKeys(KeySet(cliqueFrontalsToEliminate.begin(),
+                                         cliqueFrontalsToEliminate.end()))
+                    << std::endl;
+        }
+
         // Add to factorIndicesToRemove any factors involved in frontals of
         // current clique
         for (Key frontal : cliqueFrontalsToEliminate) {
@@ -663,6 +743,15 @@ void ISAM2::marginalizeLeaves(
                                cliqueFrontalsToEliminate.end());
       }
     }
+  }
+
+  if (leafKeysRemoved.size() != leafKeys.size() ||
+      leafKeysRemoved != leafKeys) {
+    std::cout << "leafKeysRemoved" << formatKeys(leafKeysRemoved) << std::endl;
+    std::cout << "leafKeys" << formatKeys(leafKeys) << std::endl;
+    throw std::runtime_error(
+        "ISAM2::marginalizeLeaves: Not all leaf keys were removed. This is a "
+        "bug.");
   }
 
   // At this point we have updated the BayesTree, now update the remaining iSAM2
