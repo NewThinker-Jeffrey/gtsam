@@ -177,6 +177,7 @@ void ISAM2::recalculate(const ISAM2UpdateParams& updateParams,
 void ISAM2::recalculateBatch(const ISAM2UpdateParams& updateParams,
                              KeySet* affectedKeysSet, ISAM2Result* result) {
   gttic(recalculateBatch);
+  const bool debug = ISDEBUG("ISAM2 recalculate");
 
   gttic(add_keys);
 
@@ -212,6 +213,12 @@ void ISAM2::recalculateBatch(const ISAM2UpdateParams& updateParams,
     }
   }
   gttoc(ordering);
+
+  if (debug) {
+    std::cout << "ISAM2::recalculateBatch() - order: ";
+    for (const Key key : order) std::cout << DefaultKeyFormatter(key) << " ";
+    std::cout << std::endl;
+  }
 
   gttic(linearize);
   auto linearized = nonlinearFactors_.linearize(theta_);
@@ -338,11 +345,30 @@ void ISAM2::recalculateIncremental(const ISAM2UpdateParams& updateParams,
   }
   gttoc(ordering_constraints);
 
+  if (debug) {
+    std::cout << "ISAM2::recalculateIncremental() - affectedFactorsVarIndex keys: ";
+    for (auto it = affectedFactorsVarIndex.begin(); it != affectedFactorsVarIndex.end(); ++it) {
+      std::cout << " " << DefaultKeyFormatter(it->first) << " ";
+    }
+    std::cout << std::endl;
+    std::cout << "ISAM2::recalculateIncremental() - constraintGroups: ";
+    for (const auto& [key, group] : constraintGroups) {
+      std::cout << " " << DefaultKeyFormatter(key) << "(" << group << ") ";
+    }
+    std::cout << std::endl;
+  }
+
   // Generate ordering
   gttic(Ordering);
   const Ordering ordering =
       Ordering::ColamdConstrained(affectedFactorsVarIndex, constraintGroups);
   gttoc(Ordering);
+
+  if (debug) {
+    std::cout << "ISAM2::recalculateIncremental() - order: ";
+    for (const Key key : ordering) std::cout << DefaultKeyFormatter(key) << " ";
+    std::cout << std::endl;
+  }
 
   // Do elimination
   GaussianEliminationTree etree(factors, affectedFactorsVarIndex, ordering);

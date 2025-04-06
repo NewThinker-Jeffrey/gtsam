@@ -21,6 +21,7 @@
 
 #include <gtsam/inference/Ordering.h>
 #include <gtsam/3rdparty/CCOLAMD/Include/ccolamd.h>
+#include <gtsam/base/debug.h>
 
 #ifdef GTSAM_SUPPORT_NESTED_DISSECTION
 #include <metis.h>
@@ -49,6 +50,7 @@ Ordering Ordering::Colamd(const VariableIndex& variableIndex) {
 Ordering Ordering::ColamdConstrained(const VariableIndex& variableIndex,
     std::vector<int>& cmember) {
   gttic(Ordering_COLAMDConstrained);
+  const bool debug = ISDEBUG("Ordering ColamdConstrained");
 
   gttic(Prepare);
   const size_t nVars = variableIndex.size();
@@ -99,6 +101,41 @@ Ordering Ordering::ColamdConstrained(const VariableIndex& variableIndex,
 
   gttoc(Prepare);
 
+  if (debug) {
+    std::cout << "ColamdConstrained ordered nVars = " << nVars
+              << ", nFactors = " << nFactors << ", nEntries = " << nEntries
+              << ", Alen = " << Alen << std::endl;
+    std::cout << "ColamdConstrained ordered keys: ";
+    for (size_t i = 0; i < keys.size(); ++i) {
+      std::cout << " " << i << "(" << DefaultKeyFormatter(keys[i]) << ") ";
+    }
+    std::cout << std::endl;
+    std::cout << "ColamdConstrained cmember: ";
+    for (size_t i = 0; i < cmember.size(); ++i) {
+      // std::cout << " " << i << "(" << cmember[i] << ") ";
+      std::cout << cmember[i] << ", ";
+    }
+    std::cout << std::endl;
+    std::cout << "ColamdConstrained input p: ";
+    for (size_t i = 0; i < p.size(); ++i) {
+      // std::cout << " " << i << "(" << p[i] << ") ";
+      std::cout << p[i] << ", ";
+    }
+    std::cout << std::endl;
+    std::cout << "ColamdConstrained sparse matrix A: ";
+    for (size_t i = 0; i < nEntries; ++i) {
+      // std::cout << " " << i << "(" << A[i] << ") ";
+      std::cout << A[i] << ", ";
+    }
+    std::cout << std::endl;
+    std::set<Key> group_zero;
+    for (size_t i=0; i < cmember.size(); ++i) {
+      if (cmember[i] == 0) {
+        group_zero.insert(keys[i]);
+      }
+    }
+  }
+
   // call colamd, result will be in p
   /* returns (1) if successful, (0) otherwise*/
   if (nVars > 0) {
@@ -106,6 +143,7 @@ Ordering Ordering::ColamdConstrained(const VariableIndex& variableIndex,
     int rv = ccolamd((int) nFactors, (int) nVars, (int) Alen, &A[0], &p[0],
         knobs, stats, &cmember[0]);
     if (rv != 1) {
+      std::cout << "ColamdConstrained ccolamd() failed!!!" << std::endl;
       throw runtime_error("ccolamd failed with return value " + to_string(rv));
     }
   }
@@ -120,6 +158,18 @@ Ordering Ordering::ColamdConstrained(const VariableIndex& variableIndex,
     result[j] = keys[p[j]];
   gttoc(Fill_Ordering);
 
+  if (debug) {
+    std::cout << "ColamdConstrained result p: ";
+    for (size_t i = 0; i < p.size(); ++i) {
+      std::cout << " " << i << "(" << p[i] << ") ";
+    }
+    std::cout << std::endl;
+    std::cout << "ColamdConstrained result: ";
+    for (size_t i = 0; i < nVars; ++i) {
+      std::cout << " " << DefaultKeyFormatter(result[i]) << " ";
+    }
+    std::cout << std::endl;  
+  }
   return result;
 }
 
@@ -196,11 +246,19 @@ Ordering Ordering::ColamdConstrained(const VariableIndex& variableIndex,
   for (auto key_factors: variableIndex)
     keyIndices.insert(keyIndices.end(), make_pair(key_factors.first, j++));
 
+  // Remap groups: Map the original groups to consecutive integers starting from
+  // 0 or 1. This prevents bad inputs to ccolamd when the largest group index
+  // is larger than the number of groups.
+  std::set<int> originGroups;
+  for (const auto& p : groups) originGroups.insert(p.second);
+  std::unordered_map<int, int> groupRemap;
+  int i = 0;
+  for (int g : originGroups) groupRemap.insert(make_pair(g, i++));
+
   // Assign groups
   typedef FastMap<Key, int>::value_type key_group;
   for(const key_group& p: groups) {
-    // FIXME: check that no groups are skipped
-    cmember[keyIndices.at(p.first)] = p.second;
+    cmember[keyIndices.at(p.first)] = groupRemap.at(p.second);
   }
 
   return Ordering::ColamdConstrained(variableIndex, cmember);
